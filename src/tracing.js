@@ -58,17 +58,18 @@ export async function startTracing() {
     instrumentations
   });
 
-  startPromise = nodeSdk.start()
-    .then(() => {
+  startPromise = (async () => {
+    try {
+      await nodeSdk.start();
       sdk = nodeSdk;
       console.log(`[tracing] OpenTelemetry inicializado (exportando para ${exporterEndpoint}).`);
       return sdk;
-    })
-    .catch((error) => {
+    } catch (error) {
       console.error("[tracing] Falha ao iniciar OpenTelemetry", error);
       startPromise = undefined;
       return null;
-    });
+    }
+  })();
 
   return startPromise;
 }
