@@ -22,9 +22,11 @@ import {
   validateUserCredentials
 } from "./auth.js";
 
+// Cria o servidor Relay e permite sobreposições de configuração para testes
 export function createRelayServer({ configOverride } = {}) {
   const effectiveConfig = { ...config, ...(configOverride || {}) };
   if (configOverride?.mongoUri || configOverride?.mongoDbName) {
+    // Ajusta a origem do banco antes de inicializar o cliente
     configureDatabase({
       mongoUri: configOverride.mongoUri,
       mongoDbName: configOverride.mongoDbName
@@ -64,6 +66,7 @@ export function createRelayServer({ configOverride } = {}) {
 
   const AI_RESPONSE_HISTORY_LIMIT = 50;
 
+  // Padroniza os eventos recebidos dos espelhos e atualiza o cache de estado
   const processMirrorEvent = (mirrorId, event) => {
     if (!event) {
       return null;
@@ -143,10 +146,12 @@ export function createRelayServer({ configOverride } = {}) {
     return envelope;
   };
 
+  // Fornece uma verificação de saúde HTTP simples
   app.get("/health", (req, res) => {
     res.json({ status: "ok" });
   });
 
+  // Encapsula promessas e propaga erros para o middleware padrão
   const asyncHandler = (fn) => async (req, res, next) => {
     try {
       await fn(req, res, next);
@@ -156,6 +161,7 @@ export function createRelayServer({ configOverride } = {}) {
     }
   };
 
+  // Registra novos usuários e retorna o token de acesso
   app.post("/api/users", asyncHandler(async (req, res) => {
     const { email, password } = req.body || {};
     if (!email || !password) {
@@ -170,6 +176,7 @@ export function createRelayServer({ configOverride } = {}) {
     res.status(201).json({ user: { id: user.id, email: user.email }, token });
   }));
 
+  // Autentica usuários existentes e gera novo token
   app.post("/api/auth/login", asyncHandler(async (req, res) => {
     const { email, password } = req.body || {};
     if (!email || !password) {
@@ -183,12 +190,13 @@ export function createRelayServer({ configOverride } = {}) {
     res.json({ user, token });
   }));
 
-  // Returns the authenticated user resolved from the provided Bearer token
+  // Consulta os dados do usuário baseados no JWT válido
   app.get("/api/auth/me", authenticateRequest, (req, res) => {
-  // req.user is set by authenticateRequest after validating and resolving the JWT
-  res.json({ user: req.user });
+    // req.user é definido por authenticateRequest após validar e resolver o JWT
+    res.json({ user: req.user });
   });
 
+  // Lista os espelhos do usuário junto com o estado de conexão atual
   app.get("/api/mirrors", authenticateRequest, asyncHandler(async (req, res) => {
     const mirrors = await listMirrorsByOwner(req.user.id);
     const enriched = mirrors.map((m) => {
@@ -203,6 +211,7 @@ export function createRelayServer({ configOverride } = {}) {
     res.json({ mirrors: enriched });
   }));
 
+  // Cadastra novos espelhos e retorna segredo inicial
   app.post("/api/mirrors", authenticateRequest, asyncHandler(async (req, res) => {
     const { name } = req.body || {};
     if (!name) {
@@ -220,6 +229,7 @@ export function createRelayServer({ configOverride } = {}) {
     });
   }));
 
+  // Consulta status em tempo real de um espelho
   app.get("/api/mirrors/:mirrorId/status", authenticateRequest, asyncHandler(async (req, res) => {
     const { mirrorId } = req.params;
     const mirror = await getMirrorById(mirrorId);
@@ -240,6 +250,7 @@ export function createRelayServer({ configOverride } = {}) {
     });
   }));
 
+  // Enfileira comandos para o espelho via Socket.IO
   app.post("/api/mirrors/:mirrorId/commands", authenticateRequest, asyncHandler(async (req, res) => {
     const { mirrorId } = req.params;
     const { notification, payload } = req.body || {};
@@ -263,6 +274,7 @@ export function createRelayServer({ configOverride } = {}) {
     res.json({ status: "sent", commandId });
   }));
 
+  // Recupera a leitura mais recente dos sensores
   app.get("/api/mirrors/:mirrorId/sensors/latest", authenticateRequest, asyncHandler(async (req, res) => {
     const { mirrorId } = req.params;
     const mirror = await getMirrorById(mirrorId);
@@ -279,6 +291,7 @@ export function createRelayServer({ configOverride } = {}) {
     });
   }));
 
+  // Busca o resumo agregado de sensores
   app.get("/api/mirrors/:mirrorId/sensors/summary", authenticateRequest, asyncHandler(async (req, res) => {
     const { mirrorId } = req.params;
     const mirror = await getMirrorById(mirrorId);
@@ -295,6 +308,7 @@ export function createRelayServer({ configOverride } = {}) {
     });
   }));
 
+  // Entrega o relatório detalhado de sensores
   app.get("/api/mirrors/:mirrorId/sensors/report", authenticateRequest, asyncHandler(async (req, res) => {
     const { mirrorId } = req.params;
     const mirror = await getMirrorById(mirrorId);
@@ -311,6 +325,7 @@ export function createRelayServer({ configOverride } = {}) {
     });
   }));
 
+  // Consulta o histórico de respostas de IA
   app.get("/api/mirrors/:mirrorId/ai/responses", authenticateRequest, asyncHandler(async (req, res) => {
     const { mirrorId } = req.params;
     const { requestId, limit } = req.query || {};
@@ -334,9 +349,11 @@ export function createRelayServer({ configOverride } = {}) {
     res.json({ mirror: { id: mirrorId }, responses: list });
   }));
 
+  // Coordena o ciclo de vida das conexões Socket.IO dos espelhos
   mirrorNamespace.on("connection", (socket) => {
     console.log("[mirror] incoming connection", socket.id);
 
+    // Autentica o espelho usando mirrorId + secret
     socket.on("authenticate", async ({ mirrorId, secret }) => {
       if (!mirrorId || !secret) {
         socket.emit("auth-error", { error: "Missing mirrorId or secret" });
@@ -365,52 +382,57 @@ export function createRelayServer({ configOverride } = {}) {
       mirrorNamespace.emit("mirror-status", { mirrorId, online: true });
     });
 
-  socket.on("heartbeat", () => {
-    const { mirrorId } = socket.data;
-    if (!mirrorId) {
-      return;
-    }
-    const connection = mirrorConnections.get(mirrorId);
-    if (connection) {
-      connection.lastSeen = Date.now();
-    }
-    const state = mirrorState.get(mirrorId);
-    if (state) {
-      state.lastSeen = Date.now();
-    }
-  });
+    // Atualiza o heartbeat para monitorar disponibilidade
+    socket.on("heartbeat", () => {
+      const { mirrorId } = socket.data;
+      if (!mirrorId) {
+        return;
+      }
+      const connection = mirrorConnections.get(mirrorId);
+      if (connection) {
+        connection.lastSeen = Date.now();
+      }
+      const state = mirrorState.get(mirrorId);
+      if (state) {
+        state.lastSeen = Date.now();
+      }
+    });
 
-  socket.on("command-result", ({ commandId, success, data }) => {
-    const { mirrorId } = socket.data;
-    if (!mirrorId) return;
-    mirrorNamespace.emit("command-result", { mirrorId, commandId, success, data });
-  });
+    // Encaminha o resultado dos comandos emitidos pelo dashboard
+    socket.on("command-result", ({ commandId, success, data }) => {
+      const { mirrorId } = socket.data;
+      if (!mirrorId) return;
+      mirrorNamespace.emit("command-result", { mirrorId, commandId, success, data });
+    });
 
-  socket.on("mirror-event", (event) => {
-    const { mirrorId } = socket.data;
-    if (!mirrorId) {
-      return;
-    }
-    const envelope = processMirrorEvent(mirrorId, event);
-    if (!envelope) {
-      return;
-    }
-    mirrorNamespace.emit("mirror-event", { mirrorId, ...envelope });
-  });
+    // Replica eventos do espelho para os clientes assinantes
+    socket.on("mirror-event", (event) => {
+      const { mirrorId } = socket.data;
+      if (!mirrorId) {
+        return;
+      }
+      const envelope = processMirrorEvent(mirrorId, event);
+      if (!envelope) {
+        return;
+      }
+      mirrorNamespace.emit("mirror-event", { mirrorId, ...envelope });
+    });
 
-  socket.on("disconnect", (reason) => {
-    const { mirrorId } = socket.data;
-    if (mirrorId && mirrorConnections.has(mirrorId)) {
-      mirrorConnections.delete(mirrorId);
-      const state = getMirrorState(mirrorId);
-      state.offlineSince = Date.now();
-      mirrorNamespace.emit("mirror-status", { mirrorId, online: false, reason });
-      console.log(`[mirror] ${mirrorId} disconnected: ${reason}`);
-    }
-  });
+    // Marca o espelho como offline quando a conexão cair
+    socket.on("disconnect", (reason) => {
+      const { mirrorId } = socket.data;
+      if (mirrorId && mirrorConnections.has(mirrorId)) {
+        mirrorConnections.delete(mirrorId);
+        const state = getMirrorState(mirrorId);
+        state.offlineSince = Date.now();
+        mirrorNamespace.emit("mirror-status", { mirrorId, online: false, reason });
+        console.log(`[mirror] ${mirrorId} disconnected: ${reason}`);
+      }
+    });
   });
 
   async function start() {
+    // Liga o servidor HTTP e expõe a porta final
     return new Promise((resolve) => {
       server.listen(effectiveConfig.port, () => {
         const address = server.address();
@@ -422,6 +444,7 @@ export function createRelayServer({ configOverride } = {}) {
   }
 
   async function stop() {
+    // Encerra conexões, desliga o Socket.IO e fecha o banco
     mirrorConnections.clear();
     await new Promise((resolve) => {
       io.close(() => resolve());
@@ -452,8 +475,10 @@ export function createRelayServer({ configOverride } = {}) {
   };
 }
 
+// Caminho do arquivo atual
 const thisFile = fileURLToPath(import.meta.url);
 
+// Executa o servidor se este arquivo for o ponto de entrada principal
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(thisFile)) {
   const relay = createRelayServer();
   relay.start();
