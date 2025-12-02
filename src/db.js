@@ -9,6 +9,7 @@ const databaseConfig = {
   mongoDbName: config.mongoDbName
 };
 
+// Ajusta a configuração padrão do banco antes de inicializar o cliente
 export function configureDatabase({ mongoUri, mongoDbName }) {
   if (mongoUri) {
     databaseConfig.mongoUri = mongoUri;
@@ -25,6 +26,7 @@ async function getClient() {
   if (client) {
     return client;
   }
+  // Cria um cliente Mongo com pool limitado para controlar consumo de conexões
   client = new MongoClient(databaseConfig.mongoUri, {
     maxPoolSize: 10
   });
@@ -35,6 +37,7 @@ async function getClient() {
 }
 
 async function ensureIndexes(db) {
+  // Garante índices críticos para evitar duplicidade e acelerar buscas
   await Promise.all([
     db.collection("users").createIndex({ email: 1 }, { unique: true }),
     db.collection("mirrors").createIndex({ ownerId: 1 }),
@@ -59,6 +62,7 @@ async function getDb() {
 
 export async function createUser({ email, password }) {
   const db = await getDb();
+  // Gera o hash de senha antes de persistir o usuário
   const passwordHash = await bcrypt.hash(password, 10);
   const createdAt = Date.now();
   const { insertedId } = await db.collection("users").insertOne({
@@ -71,6 +75,7 @@ export async function createUser({ email, password }) {
 
 export async function findUserByEmail(email) {
   const db = await getDb();
+  // Busca pelo email e normaliza o documento para o formato usado na API
   const user = await db.collection("users").findOne({ email });
   return normalizeUser(user);
 }
@@ -93,6 +98,7 @@ function normalizeUser(doc) {
 
 export async function createMirror({ ownerId, name, secretRaw }) {
   const db = await getDb();
+  // Protege o segredo original com hash antes de armazenar
   const secretHash = await bcrypt.hash(secretRaw, 10);
   const createdAt = Date.now();
   const { insertedId } = await db.collection("mirrors").insertOne({
@@ -112,6 +118,7 @@ export async function getMirrorById(id) {
 
 export async function listMirrorsByOwner(ownerId) {
   const db = await getDb();
+  // Ordena por criação mais recente para priorizar cadastros novos na UI
   const mirrors = await db.collection("mirrors")
     .find({ ownerId })
     .sort({ createdAt: -1 })
@@ -123,6 +130,7 @@ export async function verifyMirrorSecret(mirrorId, secret) {
   const db = await getDb();
   const mirror = await db.collection("mirrors").findOne({ _id: new ObjectId(mirrorId) });
   if (!mirror) return false;
+  // Compara o segredo informado com o hash persistido
   return bcrypt.compare(secret, mirror.secretHash);
 }
 

@@ -11,6 +11,7 @@ let memoryUri;
 const dbName = "dumbmirror-test";
 let mongoReady = true;
 
+// Zera coleções do banco em memória entre os cenários
 async function resetDatabase() {
 	if (!mongoReady) return;
 	const client = new MongoClient(memoryUri);
@@ -21,6 +22,7 @@ async function resetDatabase() {
 	await client.close();
 }
 
+// Inicializa servidor Mongo em memória antes da suíte
 test.before(async (t) => {
 	try {
 		memoryServer = await MongoMemoryServer.create();
@@ -32,10 +34,12 @@ test.before(async (t) => {
 	}
 });
 
+// Limpa dados para cada cenário isoladamente
 test.beforeEach(async () => {
 	await resetDatabase();
 });
 
+// Libera recursos após todos os testes
 test.after.always(async () => {
 	if (!mongoReady) {
 		return;
@@ -46,6 +50,7 @@ test.after.always(async () => {
 	}
 });
 
+// Conecta um espelho de teste via Socket.IO realizando autenticação imediata
 function connectMirrorSocket(baseUrl, mirrorId, secret) {
 	return new Promise((resolve, reject) => {
 		const socket = ioClient(`${baseUrl.replace("http", "ws")}/mirror`, {
@@ -92,6 +97,7 @@ function connectMirrorSocket(baseUrl, mirrorId, secret) {
 	});
 }
 
+// Valida cadastro completo de usuário + espelho e execução de comando
 test.serial("user lifecycle, mirror registration and command flow", async (t) => {
 	if (!mongoReady) {
 		t.log("MongoMemoryServer indisponível; teste ignorado.");
@@ -150,6 +156,7 @@ test.serial("user lifecycle, mirror registration and command flow", async (t) =>
 	}
 });
 
+// Verifica exposição das métricas de sensores em todas as rotas REST
 test.serial("sensor endpoints expose latest, summary and report", async (t) => {
 	if (!mongoReady) {
 		t.log("MongoMemoryServer indisponível; teste ignorado.");

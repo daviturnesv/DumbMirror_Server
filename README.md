@@ -1,66 +1,88 @@
 # DumbMirror Relay Server
 
-Relay service that brokers commands between the DumbMirror Android app and MagicMirror installations, enabling remote control even when the mirror and app are on different networks.
+Serviço de relay que intermedeia comandos entre o aplicativo Android e as instalações MagicMirror, permitindo controle remoto mesmo quando espelho e app estão em redes distintas.
 
-## Features
+## Visão geral
 
-- REST API for user registration, login, mirror provisioning, and command dispatch
-- Socket.IO namespace (`/mirror`) for mirrors to maintain persistent connections
-- Command forwarding with online/offline awareness
-- SQLite persistence using `better-sqlite3`
+- **REST API** para cadastro/login de usuários, provisionamento de espelhos e envio de comandos.
+- **Socket.IO** no namespace `/mirror` para manter conexões persistentes com os espelhos.
+- **Cache em memória** para estado de sensores e respostas de IA, exposto por endpoints REST.
+- **Persistência em MongoDB** (Atlas ou local). Scripts antigos com SQLite estão depreciados.
 
-## Getting Started
+## Pré-requisitos
+
+- Node.js 18 ou superior
+- MongoDB acessível (local ou Atlas)
+- Variáveis de ambiente configuradas (`.env`)
+
+## Configuração rápida
 
 ```bash
 cp .env.example .env
 npm install
-npm run start
+npm run dev # usa nodemon para recarregar automaticamente
 ```
 
-The server listens on the port defined by `PORT` (default `8081`).
+### Variáveis de ambiente principais
 
-### REST Endpoints
+| Variável | Descrição |
+|----------|-----------|
+| `PORT` | Porta HTTP (padrão `8081`) |
+| `JWT_SECRET` | Segredo usado para assinar tokens JWT |
+| `MONGODB_URI` | String de conexão com o MongoDB |
+| `MONGODB_DB` | Nome do banco utilizado pelo relay |
 
-- `POST /api/users` — register a new account `{ email, password }`
-- `POST /api/auth/login` — authenticate and receive a JWT `{ email, password }`
-- `GET /api/auth/me` — verify current token; returns `{ user: { id, email } }`
-- `GET /api/mirrors` — list mirrors owned by the authenticated user
-- `POST /api/mirrors` — create a mirror; response returns generated `secret`
-- `GET /api/mirrors/:mirrorId/status` — retrieve online status and last heartbeat
-- `POST /api/mirrors/:mirrorId/commands` — forward a notification/payload to the connected mirror
-- `GET /api/mirrors/:mirrorId/sensors/latest` — obtém a leitura mais recente transmitida pelo espelho
-- `GET /api/mirrors/:mirrorId/sensors/summary` — recupera o pacote de resumo emitido quando o módulo envia `SENSORDATA_SUMMARY`
-- `GET /api/mirrors/:mirrorId/sensors/report` — devolve o último relatório agregado (ex.: comandos de relatório ou resumo IA)
+> **Importante:** o arquivo `.env.example` ainda referencia `DATABASE_PATH` da versão SQLite. Substitua por `MONGODB_URI`/`MONGODB_DB` ao criar o `.env` real.
 
-All `/api/*` routes (except user creation/login) require a bearer token in the `Authorization` header.
+## Endpoints REST
 
-### Mirror Socket Protocol
+Todas as rotas sob `/api/*`, exceto criação/login de usuário, exigem header `Authorization: Bearer <token>`.
 
-Mirrors connect to `ws(s)://<host>:<port>/mirror` using Socket.IO and must immediately emit:
+- `POST /api/users` – cria um novo usuário `{ email, password }` e retorna token JWT inicial.
+- `POST /api/auth/login` – autentica o usuário e devolve um novo token.
+- `GET /api/auth/me` – retorna dados do usuário autenticado.
+- `GET /api/mirrors` – lista espelhos do usuário logado com status online/offline.
+- `POST /api/mirrors` – cria um espelho e devolve o `secret` para pareamento.
+- `GET /api/mirrors/:mirrorId/status` – consulta `lastSeen`, `offlineSince` e informações básicas.
+- `POST /api/mirrors/:mirrorId/commands` – envia comando (`notification`, `payload`) via Socket.IO.
+- `GET /api/mirrors/:mirrorId/sensors/latest` – retorna a última leitura de sensores recebida.
+- `GET /api/mirrors/:mirrorId/sensors/summary` – devolve o resumo agregado mais recente.
+- `GET /api/mirrors/:mirrorId/sensors/report` – devolve o último relatório detalhado.
+- `GET /api/mirrors/:mirrorId/ai/responses` – lista histórico de respostas de IA ou filtra por `requestId`.
 
-```json
-{
-  "mirrorId": "UUID returned by /api/mirrors",
-  "secret": "secret returned by /api/mirrors"
-}
-```
+## Protocolo Socket.IO (`/mirror`)
 
-Events:
+1. Espelho conecta em `ws(s)://<host>:<port>/mirror`.
+2. Imediatamente emite `authenticate` com `{ mirrorId, secret }` retornados pelo endpoint de criação.
+3. Servidor responde com `auth-success` ou `auth-error` e notifica demais clientes com `mirror-status`.
+4. Eventos importantes:
+   - `heartbeat` – mantêm `lastSeen` atualizado.
+   - `execute-command` – comando enviado pelo servidor (dashboard/app).
+   - `command-result` – espelho devolve status do comando executado.
+   - `mirror-event` – usado para telemetria (sensores, IA, logs).
 
-- `authenticate` — mirror -> server; server replies with `auth-success` or `auth-error`
-- `execute-command` — server -> mirror; payload `{ commandId, notification, payload }`
-- `command-result` — mirror -> server; payload `{ commandId, success, data }`
-- `heartbeat` — mirror -> server (optional periodic ping)
-- `mirror-status` — broadcast to `/mirror` namespace clients on connect/disconnect
+## Scripts npm úteis
 
-### Development Scripts
+- `npm run dev` – inicia o servidor com recarregamento automático.
+- `npm run start` – executa a versão buildada (sem nodemon).
+- `npm run lint` – roda ESLint.
+- `npm test` – executa testes end-to-end (`tests/relay.e2e.test.mjs`) usando Mongo em memória.
 
-- `npm run dev` — start server with automatic reload via nodemon
-- `npm run lint` — run ESLint on source files
+## Estrutura principal
+
+- `src/config.js` – carrega `.env` e expõe configuração.
+- `src/auth.js` – geração/validação de JWT e middleware `authenticateRequest`.
+- `src/db.js` – conexão com Mongo e helpers (`createUser`, `createMirror`, índices, etc.).
+- `src/server.js` – Express + Socket.IO, rotas REST e processamento de eventos.
+- `tests/relay.e2e.test.mjs` – cobre fluxo completo usuário/espelho/comandos + sensores.
+
+## Observações sobre scripts legados
+
+- `scripts/list.mjs` e `scripts/reset-db.mjs` ainda assumem SQLite. Estão comentados como legado e vão ser reescritos.
 
 ## Roadmap
 
-- Add refresh tokens and token revocation
-- Persist command audit log
-- Implement mirror-side module to consume this protocol
-- Harden validation rate limiting and TLS termination guidance
+- Reescrever scripts administrativos para Mongo.
+- Implementar refresh tokens / revogação.
+- Persistir histórico de comandos e eventos no banco.
+- Adicionar métricas e limites de taxa (rate limiting) nas rotas críticas.
