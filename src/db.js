@@ -30,10 +30,23 @@ async function getClient() {
   client = new MongoClient(databaseConfig.mongoUri, {
     maxPoolSize: 10
   });
-  await client.connect();
-  database = client.db(databaseConfig.mongoDbName);
-  await ensureIndexes(database);
-  return client;
+
+  try {
+    await client.connect();
+    database = client.db(databaseConfig.mongoDbName);
+    await ensureIndexes(database);
+    return client;
+  } catch (error) {
+    console.error("[db] Falha ao conectar no MongoDB", error);
+    try {
+      await client.close();
+    } catch (closeError) {
+      console.error("[db] Erro ao encerrar cliente Mongo após falha", closeError);
+    }
+    client = undefined;
+    database = undefined;
+    throw error;
+  }
 }
 
 async function ensureIndexes(db) {

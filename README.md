@@ -34,6 +34,15 @@ npm run dev # usa nodemon para recarregar automaticamente
 
 > **Importante:** o arquivo `.env.example` ainda referencia `DATABASE_PATH` da versão SQLite. Substitua por `MONGODB_URI`/`MONGODB_DB` ao criar o `.env` real.
 
+### Tracing com OpenTelemetry
+
+- `OTEL_EXPORTER_OTLP_ENDPOINT` – URL do collector OTLP/HTTP (padrão `http://localhost:4318/v1/traces`).
+- `OTEL_EXPORTER_OTLP_HEADERS` – headers adicionais no formato `chave=valor,outro=valor`.
+- `OTEL_SERVICE_NAME` – sobrescreve o nome do serviço reportado para o collector (`dumbmirror-relay` por padrão).
+- `OTEL_TRACING_DISABLED=1` – desativa a instrumentação sem remover dependências.
+
+Ao desenvolver com o AI Toolkit, execute o comando `Open AI Toolkit: Start Trace Collector` em seguida rode `npm run dev` para que os spans HTTP, MongoDB e Socket.IO sejam enviados automaticamente.
+
 ## Endpoints REST
 
 Todas as rotas sob `/api/*`, exceto criação/login de usuário, exigem header `Authorization: Bearer <token>`.
@@ -79,10 +88,3 @@ Todas as rotas sob `/api/*`, exceto criação/login de usuário, exigem header `
 ## Observações sobre scripts legados
 
 - `scripts/list.mjs` e `scripts/reset-db.mjs` ainda assumem SQLite. Estão comentados como legado e vão ser reescritos.
-
-## Roadmap
-
-- Reescrever scripts administrativos para Mongo.
-- Implementar refresh tokens / revogação.
-- Persistir histórico de comandos e eventos no banco.
-- Adicionar métricas e limites de taxa (rate limiting) nas rotas críticas.

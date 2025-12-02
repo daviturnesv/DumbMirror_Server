@@ -3,8 +3,6 @@ import http from "node:http";
 import { Server as SocketIOServer } from "socket.io";
 import cors from "cors";
 import { randomBytes } from "node:crypto";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
 import { config } from "./config.js";
 import {
   createUser,
@@ -475,11 +473,3 @@ export function createRelayServer({ configOverride } = {}) {
   };
 }
 
-// Caminho do arquivo atual
-const thisFile = fileURLToPath(import.meta.url);
-
-// Executa o servidor se este arquivo for o ponto de entrada principal
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(thisFile)) {
-  const relay = createRelayServer();
-  relay.start();
-}

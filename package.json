@@ -5,8 +5,8 @@
   "type": "module",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "nodemon src/server.js",
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
     "lint": "eslint \"src/**/*.{js,mjs}\" --max-warnings=0",
     "test": "ava",
     "test:watch": "ava --watch",
@@ -17,6 +17,12 @@
     "node": ">=18.18.0"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.52.1",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.52.1",
+    "@opentelemetry/resources": "^1.9.0",
+    "@opentelemetry/sdk-node": "^0.52.1",
+    "@opentelemetry/semantic-conventions": "^1.23.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
